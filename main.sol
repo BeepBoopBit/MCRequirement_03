@@ -1,53 +1,58 @@
-pragma solidity 0.8.18;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-contract VotingApplication {
-    struct Vote {
-        bool isActive;
-        mapping(address => bool) hasVoted;
-        mapping(bool => uint256) votes;
+contract MessageEscrow {
+    enum State { NONE, AWAITING_MESSAGE, AWAITING_CONFIRMATION, COMPLETE }
+
+    address public sender;
+    address public receiver;
+    State public currentState;
+    address public owner;
+    string public message;
+
+    modifier onlySender() {
+        require(msg.sender == sender, "Only the sender can call this function");
+        _;
     }
 
-    mapping(uint256 => Vote) public votes;
-    uint256 public nextVoteId;
-
-    // Event declarations
-    event VoteStarted(uint256 voteId);
-    event VoteCast(uint256 voteId, address voter, bool option);
-    event VoteEnded(uint256 voteId, uint256 yesVotes, uint256 noVotes);
-
-    // Start a new vote
-    function startVote() public {
-        votes[nextVoteId].isActive = true;
-        emit VoteStarted(nextVoteId);
-        nextVoteId++;
+    modifier onlyReceiver() {
+        require(msg.sender == receiver, "Only the receiver can call this function");
+        _;
     }
 
-    // Cast a vote
-    function castVote(uint256 voteId, bool option) public {
-        require(votes[voteId].isActive, "Voting is not active");
-        require(!votes[voteId].hasVoted[msg.sender], "Already voted");
-
-        votes[voteId].hasVoted[msg.sender] = true;
-        votes[voteId].votes[option]++;
-        emit VoteCast(voteId, msg.sender, option);
+    modifier inState(State expectedState) {
+        require(currentState == expectedState, "Invalid state");
+        _;
     }
 
-    // End the vote
-    function endVote(uint256 voteId) public {
-        require(votes[voteId].isActive, "Voting is not active or already ended");
-
-        votes[voteId].isActive = false;
-        uint256 yesVotes = votes[voteId].votes[true];
-        uint256 noVotes = votes[voteId].votes[false];
-
-        emit VoteEnded(voteId, yesVotes, noVotes);
+    constructor(address _sender, address _receiver) {
+        sender = _sender;
+        receiver = _receiver;
+        currentState = State.AWAITING_MESSAGE;
+        owner = msg.sender;
     }
 
-    // Manual revert to demonstrate the revert statement
-    function manualRevert(bool shouldRevert) public pure {
-        if (shouldRevert) {
-            revert("Reverted by user choice.");
+    function sendMessage(string memory _message) public onlySender inState(State.AWAITING_MESSAGE) {
+        require(bytes(_message).length > 0, "Message must be non-empty");
+        message = _message;
+        currentState = State.AWAITING_CONFIRMATION;
+
+        assert(bytes(message).length > 0);
+        assert(currentState == State.AWAITING_CONFIRMATION);
+    }
+
+    function confirmReceipt() public onlyReceiver inState(State.AWAITING_CONFIRMATION) {
+        currentState = State.COMPLETE;
+
+        assert(currentState == State.COMPLETE);
+    }
+
+    function resetEscrow() public {
+        if (msg.sender != owner) {
+            revert("Only the owner can reset the escrow");
         }
+        
+        message = "";
+        currentState = State.AWAITING_MESSAGE;
     }
 }
-
